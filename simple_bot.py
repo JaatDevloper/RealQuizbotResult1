@@ -2367,6 +2367,55 @@ async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
     if "player_scores" in context.bot_data:
         del context.bot_data["player_scores"]
 
+async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for when a user answers a poll"""
+    answer = update.poll_answer
+    
+    # Get user information
+    user_id = answer.user.id
+    user_name = answer.user.first_name
+    if answer.user.last_name:
+        user_name += f" {answer.user.last_name}"
+    
+    # Store in the chat data to make it accessible for all users
+    chat_id = context.user_data.get("marathon_chat_id")
+    if not chat_id:
+        return
+        
+    if "player_scores" not in context.bot_data:
+        context.bot_data["player_scores"] = {}
+    
+    # Add this player if not already tracked
+    if user_id not in context.bot_data["player_scores"]:
+        context.bot_data["player_scores"][user_id] = {
+            "name": user_name,
+            "score": 0,
+            "correct": 0,
+            "incorrect": 0,
+            "time_taken": 0,
+            "start_time": time.time()
+        }
+    
+    # Get which option they selected (if any)
+    selected_option = answer.option_ids[0] if answer.option_ids else None
+    
+    # Find the question this poll belongs to
+    current_question = context.user_data.get("current_question", {})
+    correct_option = current_question.get("answer", 0)
+    
+    # Update score based on their answer
+    if selected_option == correct_option:
+        # Correct answer: +5 points
+        context.bot_data["player_scores"][user_id]["score"] += 5
+        context.bot_data["player_scores"][user_id]["correct"] += 1
+    else:
+        # Wrong answer: -2 points
+        context.bot_data["player_scores"][user_id]["score"] -= 2
+        context.bot_data["player_scores"][user_id]["incorrect"] += 1
+    
+    # Update time taken
+    context.bot_data["player_scores"][user_id]["time_taken"] = time.time() - context.bot_data["player_scores"][user_id]["start_time"]
+
 
         
         
