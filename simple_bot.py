@@ -2209,6 +2209,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "or forward me a poll to convert it to a quiz question!"
         )
 
+async def handle_poll(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for when polls are sent to the bot"""
+    # This is just a placeholder - your existing poll handling stays as-is
+    pass
+
 async def handle_poll_to_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle selection of correct answer for poll to quiz conversion"""
     query = update.callback_query
