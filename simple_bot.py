@@ -2335,66 +2335,79 @@ async def handle_poll_id_selection(update: Update, context: ContextTypes.DEFAULT
         # Set flag to wait for ID
         context.user_data["awaiting_poll_id"] = True
 
-async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
+def show_final_results(context):
     """Show final quiz results with a leaderboard sorted by score and time"""
-    # Get the chat ID from where we stored it
-    chat_id = context.bot_data.get("quiz_chat_id")  # Make sure this matches where you store it
+    global quiz_chat_id, player_data, current_quiz_state
     
-    # If for some reason it's not there, we can't proceed
-    if not chat_id:
-        print("No chat_id found!")
+    if not player_data:
+        # No participants, just show a message
+        context.bot.send_message(
+            chat_id=quiz_chat_id,
+            text="The quiz has ended, but no one participated!",
+            parse_mode="Markdown"
+        )
         return
     
-    # Get player data from bot_data
-    player_data = context.bot_data.get("player_scores", {})
+    # Log for debugging
+    logger.info(f"Showing final results. Player data: {player_data}")
     
-    # Debug - remove later
-    print(f"Player data: {player_data}")
+    # Sort players by score (descending) and time taken (ascending)
+    leaderboard = sorted(
+        player_data.values(), 
+        key=lambda x: (-x["score"], x["time_taken"])
+    )
     
     # Create the leaderboard message
-    text = "🏁 *The quiz has finished!*\n\n"
-    total_questions = context.bot_data.get("total_questions", 0)
-    text += f"{total_questions} questions answered\n\n"
+    text = f"🏁 *The quiz has finished!*\n\n"
+    text += f"{len(current_quiz_state.get('questions', []))} questions answered\n\n"
     
-    # If no players participated or scores weren't tracked
-    if not player_data:
-        text += "No participants answered the quiz questions."
-        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
-        return
-    
-    # Convert player_scores dictionary to a list for sorting
-    leaderboard = []
-    for user_id, data in player_data.items():
-        leaderboard.append(data)
-    
-    # Sort by score (highest first) and time (fastest first)
-    leaderboard = sorted(leaderboard, key=lambda x: (-x["score"], x["time_taken"]))
-    
-    # Add each player to the text
+    # Add each player to the leaderboard with appropriate medal
     for i, player in enumerate(leaderboard, 1):
-        # Add medal emoji for top 3
+        name = player['name']
+        score = player['score']
+        correct = player.get('correct', 0)
+        wrong = player.get('wrong', 0)
+        
+        # Format time nicely
+        time_sec = round(player['time_taken'], 1)
+        minutes = int(time_sec // 60)
+        seconds = time_sec % 60
+        time_str = f"{minutes} min {int(seconds)} sec" if minutes > 0 else f"{int(seconds)} sec"
+        
+        # Assign medals for top 3 positions
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         
-        # Format time
-        time_sec = round(player["time_taken"], 1)
-        minutes = int(time_sec // 60)
-        seconds = int(time_sec % 60)
-        time_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
-        
-        # Create player entry
-        text += f"{medal} *{player['name']}* – {player['score']} points ({time_str})\n"
+        # Add this player's entry to the leaderboard
+        text += f"{medal} {name} – {score} pts ({correct} ✓, {wrong} ✗) in {time_str}\n"
     
-    # Add congratulations
-    text += "\n🏆 Congratulations to the winner!"
+    # Add congratulations message at the end
+    text += "\n🏆 Congratulations to all participants!"
     
     # Send the message
-    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+    context.bot.send_message(
+        chat_id=quiz_chat_id,
+        text=text,
+        parse_mode="Markdown"
+    )
     
-    # Clear quiz data
-    if "player_scores" in context.bot_data:
-        del context.bot_data["player_scores"]
-    if "active_polls" in context.bot_data:
-        del context.bot_data["active_polls"]
+    # Update user statistics for quizzes taken
+    for user_id, player in player_data.items():
+        users = load_users()
+        if user_id in users:
+            user_data = users[user_id]
+            user_data["total_quizzes"] = user_data.get("total_quizzes", 0) + 1
+            
+            # Update best score
+            if player["score"] > user_data.get("best_score", 0):
+                user_data["best_score"] = player["score"]
+            
+            # Update average score
+            total_quizzes = user_data["total_quizzes"]
+            current_avg = user_data.get("average_score", 0)
+            new_avg = ((current_avg * (total_quizzes - 1)) + player["score"]) / total_quizzes
+            user_data["average_score"] = new_avg
+            
+            save_users(users)
 
 def handle_poll_answer(update, context):
     """Handler for when a user answers a poll"""
