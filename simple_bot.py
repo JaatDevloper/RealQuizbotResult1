@@ -2396,70 +2396,98 @@ async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
     if "active_polls" in context.bot_data:
         del context.bot_data["active_polls"]
 
-async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_poll_answer(update, context):
     """Handler for when a user answers a poll"""
-    # Debug logging - remove later
-    print("Poll answer received!")
+    global player_data
     
     answer = update.poll_answer
     poll_id = answer.poll_id
-    
-    # Get user information
     user_id = answer.user.id
-    user_name = answer.user.first_name
-    if answer.user.username:
-        user_name = f"@{answer.user.username}"
-    elif answer.user.last_name:
-        user_name += f" {answer.user.last_name}"
     
-    # Debug logging - remove later
-    print(f"Answer from: {user_name} (ID: {user_id})")
-    print(f"Poll ID: {poll_id}")
+    # Get the user name from telegram API
+    user = context.bot.get_chat_member(chat_id=quiz_chat_id, user_id=user_id).user
+    user_name = user.first_name
+    if user.last_name:
+        user_name += f" {user.last_name}"
     
-    # Make sure we have a place to store player data
-    if "player_scores" not in context.bot_data:
-        context.bot_data["player_scores"] = {}
+    # Get the selected option
+    selected_option = answer.option_ids[0] if answer.option_ids else None
     
-    # Add this player if not already tracked
-    if user_id not in context.bot_data["player_scores"]:
-        context.bot_data["player_scores"][user_id] = {
+    # Find which question this is for
+    if "current_poll_id" not in current_quiz_state or poll_id != current_quiz_state["current_poll_id"]:
+        # This might be an answer to an old poll, ignore
+        return
+    
+    # Get the current question (which has already been incremented)
+    question_index = current_quiz_state["current_question"] - 1
+    question = current_quiz_state["questions"][question_index]
+    
+    # Check if the answer is correct
+    correct_option = question["correct_option"]
+    is_correct = (selected_option == correct_option)
+    
+    # Load settings for scoring
+    settings = load_settings()
+    correct_points = settings.get("correct_points", 5)
+    negative_marking = settings.get("negative_marking", True)
+    negative_ratio = settings.get("negative_ratio", 0.4)
+    
+    # Calculate points with negative marking
+    points = correct_points if is_correct else (
+        -int(correct_points * negative_ratio) if negative_marking else 0
+    )
+    
+    # Record player data
+    if str(user_id) not in player_data:
+        player_data[str(user_id)] = {
             "name": user_name,
             "score": 0,
             "correct": 0,
-            "incorrect": 0,
+            "wrong": 0,
             "time_taken": 0,
-            "start_time": time.time()
+            "last_answer_time": time.time()
         }
     
-    # Get which option they selected (if any)
-    selected_option = answer.option_ids[0] if answer.option_ids else None
-    
-    # Find the question this poll belongs to
-    # We need to store active_polls when sending questions
-    if hasattr(context, "bot_data") and "active_polls" in context.bot_data:
-        poll_data = context.bot_data["active_polls"].get(poll_id)
-        if poll_data:
-            correct_option = poll_data.get("correct_option", 0)
-            
-            # Debug logging - remove later
-            print(f"Selected option: {selected_option}")
-            print(f"Correct option: {correct_option}")
-            
-            # Update score based on their answer
-            if selected_option == correct_option:
-                # Correct answer: +5 points
-                context.bot_data["player_scores"][user_id]["score"] += 5
-                context.bot_data["player_scores"][user_id]["correct"] += 1
-                print(f"Correct! New score: {context.bot_data['player_scores'][user_id]['score']}")
-            else:
-                # Wrong answer: -2 points
-                context.bot_data["player_scores"][user_id]["score"] -= 2
-                context.bot_data["player_scores"][user_id]["incorrect"] += 1
-                print(f"Wrong! New score: {context.bot_data['player_scores'][user_id]['score']}")
+    player_data[str(user_id)]["score"] += points
+    if is_correct:
+        player_data[str(user_id)]["correct"] += 1
+    else:
+        player_data[str(user_id)]["wrong"] += 1
     
     # Update time taken
-    context.bot_data["player_scores"][user_id]["time_taken"] = time.time() - context.bot_data["player_scores"][user_id]["start_time"]
+    player_data[str(user_id)]["time_taken"] = time.time() - current_quiz_state["start_time"]
+    player_data[str(user_id)]["last_answer_time"] = time.time()
+    
+    # Log for debugging
+    logger.info(f"User {user_name} answered question {question_index+1} - Correct: {is_correct}, Points: {points}")
+    logger.info(f"Player data now: {player_data}")
+    
+    # Update user statistics in the database
+    users = load_users()
+    if str(user_id) not in users:
+        users[str(user_id)] = {
+            "name": user_name,
+            "total_quizzes": 0,
+            "total_questions": 0,
+            "correct_answers": 0,
+            "wrong_answers": 0,
+            "best_score": 0,
+            "average_score": 0
+        }
+    
+    users[str(user_id)]["total_questions"] += 1
+    if is_correct:
+        users[str(user_id)]["correct_answers"] += 1
+    else:
+        users[str(user_id)]["wrong_answers"] += 1
+    
+    save_users(users)
+    
 
+
+    
+    
+                
         
         
 
