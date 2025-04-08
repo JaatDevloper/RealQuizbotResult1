@@ -682,75 +682,42 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_stats(stats)
 
 async def schedule_next_question(context: ContextTypes.DEFAULT_TYPE):
-    # Get the remaining questions
-    marathon_questions = context.user_data.get("marathon_questions", [])
+    """Send the next question in the marathon quiz sequence"""
+    global quiz_chat_id
     
-    # Get the chat ID (I notice it's missing from your code snippet)
-    chat_id = context.user_data.get("marathon_chat_id")
-    
-    # Store chat_id in bot_data too for access in the poll answer handler
-    context.bot_data["quiz_chat_id"] = chat_id
-    
-    if not marathon_questions:
-        # No more questions left, show the final results
-        await asyncio.sleep(15)  # Wait for the last question to finish
+    if not current_quiz_state or current_quiz_state["current_question"] >= len(current_quiz_state["questions"]):
+        # Quiz is over, show results immediately
         await show_final_results(context)
         return
-        
-    # Get the next question
-    question = marathon_questions[0]
-    timer_duration = question.get("timer_duration", 15)
-    context.user_data["last_timer_duration"] = timer_duration
     
-    # Get current question number and total questions
-    current_question = context.user_data.get("current_question_number", 1)
-    total_questions = context.user_data.get("total_questions", 0)
+    # Get current question
+    question_index = current_quiz_state["current_question"]
+    question = current_quiz_state["questions"][question_index]
     
-    # Add question number to the question text in square brackets
-    question_text = f"[{current_question}/{total_questions}] {question['question']}"
-    
-    # Store the current question for reference in poll_answer handler
-    context.user_data["current_question"] = question
-    
-    # Track total questions in bot_data for the final results
-    context.bot_data["total_questions"] = total_questions
-    
-    # Send the poll and capture the returned message
-    sent_message = await context.bot.send_poll(
-        chat_id=chat_id,
-        question=question_text,
-        options=question["options"],
+    # Send as poll
+    message = await context.bot.send_poll(
+        chat_id=quiz_chat_id,
+        question=f"Question {question_index + 1}: {question['question']}",
+        options=question['options'],
         type=Poll.QUIZ,
-        correct_option_id=question["answer"],
+        correct_option_id=question['correct_option'],
         is_anonymous=False,
-        explanation="Marathon mode",
-        open_period=timer_duration
+        explanation=None,
+        explanation_parse_mode=None,
     )
     
-    # Store the poll's data for tracking answers
-    if "active_polls" not in context.bot_data:
-        context.bot_data["active_polls"] = {}
+    # Save poll ID for later reference
+    current_quiz_state["current_poll_id"] = message.poll.id
+    current_quiz_state["current_message_id"] = message.message_id
     
-    # Store this poll's ID and correct answer
-    poll_id = sent_message.poll.id
-    context.bot_data["active_polls"][poll_id] = {
-        "correct_option": question["answer"],
-        "question_text": question_text
-    }
-
-    # Update user_data with remaining questions
-    context.user_data["marathon_questions"] = marathon_questions[1:]
-    context.user_data["current_question_number"] = current_question + 1
+    # Move to next question
+    current_quiz_state["current_question"] += 1
     
-    # Schedule next question after timer_duration seconds
-    if context.user_data["marathon_questions"]:
-        # If there are more questions, schedule the next one after timer_duration
-        await asyncio.sleep(timer_duration + 5)  # Wait a bit longer than the timer
-        await schedule_next_question(context)
-    else:
-        # This was the last question, wait for timer to finish then show results
-        await asyncio.sleep(timer_duration + 5)  # Wait a bit longer than the timer
-        await show_final_results(context)
+    # If this is the last question, schedule showing final results
+    if current_quiz_state["current_question"] >= len(current_quiz_state["questions"]):
+        # Schedule showing final results after 10 seconds
+        context.job_queue.run_once(show_final_results, 10)
+        logger.info("Last question sent. Final results will be shown in 10 seconds.")
 
 async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for when a user answers a poll"""
