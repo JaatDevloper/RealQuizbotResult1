@@ -2372,19 +2372,25 @@ async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for when a user answers a poll"""
+    # Debug logging - remove later
+    print("Poll answer received!")
+    
     answer = update.poll_answer
+    poll_id = answer.poll_id
     
     # Get user information
     user_id = answer.user.id
     user_name = answer.user.first_name
-    if answer.user.last_name:
+    if answer.user.username:
+        user_name = f"@{answer.user.username}"
+    elif answer.user.last_name:
         user_name += f" {answer.user.last_name}"
     
-    # Store in the chat data to make it accessible for all users
-    chat_id = context.user_data.get("marathon_chat_id")
-    if not chat_id:
-        return
-        
+    # Debug logging - remove later
+    print(f"Answer from: {user_name} (ID: {user_id})")
+    print(f"Poll ID: {poll_id}")
+    
+    # Make sure we have a place to store player data
     if "player_scores" not in context.bot_data:
         context.bot_data["player_scores"] = {}
     
@@ -2403,22 +2409,30 @@ async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
     selected_option = answer.option_ids[0] if answer.option_ids else None
     
     # Find the question this poll belongs to
-    current_question = context.user_data.get("current_question", {})
-    correct_option = current_question.get("answer", 0)
-    
-    # Update score based on their answer
-    if selected_option == correct_option:
-        # Correct answer: +5 points
-        context.bot_data["player_scores"][user_id]["score"] += 5
-        context.bot_data["player_scores"][user_id]["correct"] += 1
-    else:
-        # Wrong answer: -2 points
-        context.bot_data["player_scores"][user_id]["score"] -= 2
-        context.bot_data["player_scores"][user_id]["incorrect"] += 1
+    # We need to store active_polls when sending questions
+    if hasattr(context, "bot_data") and "active_polls" in context.bot_data:
+        poll_data = context.bot_data["active_polls"].get(poll_id)
+        if poll_data:
+            correct_option = poll_data.get("correct_option", 0)
+            
+            # Debug logging - remove later
+            print(f"Selected option: {selected_option}")
+            print(f"Correct option: {correct_option}")
+            
+            # Update score based on their answer
+            if selected_option == correct_option:
+                # Correct answer: +5 points
+                context.bot_data["player_scores"][user_id]["score"] += 5
+                context.bot_data["player_scores"][user_id]["correct"] += 1
+                print(f"Correct! New score: {context.bot_data['player_scores'][user_id]['score']}")
+            else:
+                # Wrong answer: -2 points
+                context.bot_data["player_scores"][user_id]["score"] -= 2
+                context.bot_data["player_scores"][user_id]["incorrect"] += 1
+                print(f"Wrong! New score: {context.bot_data['player_scores'][user_id]['score']}")
     
     # Update time taken
     context.bot_data["player_scores"][user_id]["time_taken"] = time.time() - context.bot_data["player_scores"][user_id]["start_time"]
-
 
         
         
