@@ -1414,8 +1414,11 @@ def main():
     application.add_handler(CommandHandler("negativemarking", negative_marking_command))
     application.add_handler(CommandHandler("negativevalue", negative_value_command))
     
-    # Handle poll answers
-    application.add_handler(PollHandler(handle_poll_answer))
+    # Handle poll answers - CHANGE THIS LINE
+    application.add_handler(PollAnswerHandler(handle_poll_answer))
+    
+    # Add a handler for forwarded polls if needed
+    application.add_handler(PollHandler(handle_poll))
     
     # Add conversation handler for quiz creation
     add_quiz_conv = ConversationHandler(
@@ -1466,7 +1469,7 @@ def main():
         filters.FORWARDED & filters.POLL | filters.TEXT & ~filters.COMMAND, 
         handle_message
     ))
-    
+
     # Add callback query handler for button callbacks
     application.add_handler(CallbackQueryHandler(button_callback))
     
