@@ -685,6 +685,12 @@ async def schedule_next_question(context: ContextTypes.DEFAULT_TYPE):
     # Get the remaining questions
     marathon_questions = context.user_data.get("marathon_questions", [])
     
+    # Get the chat ID (I notice it's missing from your code snippet)
+    chat_id = context.user_data.get("marathon_chat_id")
+    
+    # Store chat_id in bot_data too for access in the poll answer handler
+    context.bot_data["quiz_chat_id"] = chat_id
+    
     if not marathon_questions:
         # No more questions left, show the final results
         await asyncio.sleep(15)  # Wait for the last question to finish
@@ -703,11 +709,14 @@ async def schedule_next_question(context: ContextTypes.DEFAULT_TYPE):
     # Add question number to the question text in square brackets
     question_text = f"[{current_question}/{total_questions}] {question['question']}"
     
-    # Get the chat ID
-    chat_id = context.user_data.get("marathon_chat_id")
+    # Store the current question for reference in poll_answer handler
+    context.user_data["current_question"] = question
     
-    # Send the poll
-    await context.bot.send_poll(
+    # Track total questions in bot_data for the final results
+    context.bot_data["total_questions"] = total_questions
+    
+    # Send the poll and capture the returned message
+    sent_message = await context.bot.send_poll(
         chat_id=chat_id,
         question=question_text,
         options=question["options"],
@@ -718,6 +727,17 @@ async def schedule_next_question(context: ContextTypes.DEFAULT_TYPE):
         open_period=timer_duration
     )
     
+    # Store the poll's data for tracking answers
+    if "active_polls" not in context.bot_data:
+        context.bot_data["active_polls"] = {}
+    
+    # Store this poll's ID and correct answer
+    poll_id = sent_message.poll.id
+    context.bot_data["active_polls"][poll_id] = {
+        "correct_option": question["answer"],
+        "question_text": question_text
+    }
+
     # Update user_data with remaining questions
     context.user_data["marathon_questions"] = marathon_questions[1:]
     context.user_data["current_question_number"] = current_question + 1
