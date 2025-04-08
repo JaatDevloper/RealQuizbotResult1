@@ -588,98 +588,39 @@ async def negative_value_command(update: Update, context: ContextTypes.DEFAULT_T
 
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start a new quiz"""
-    # Store chat_id for later use in show_final_results
-    context.user_data["marathon_chat_id"] = update.effective_chat.id
+    global quiz_chat_id
+    
+    # Set up quiz chat ID (critical for showing results at the end)
+    quiz_chat_id = update.effective_chat.id
+    logger.info(f"Starting quiz in chat ID: {quiz_chat_id}")
     
     questions = load_questions()
-    
     if not questions:
-        await update.message.reply_text("No questions available. Add some with /add command!")
+        await update.message.reply_text("No quiz questions available. Please add some with /add_quiz")
         return
     
-    # Check if an ID was specified
-    if context.args and len(context.args) > 0:
-        try:
-            requested_id = int(context.args[0])
-            # Find all questions with this ID
-            matching_questions = [q for q in questions if q.get("id") == requested_id]
-            
-            if not matching_questions:
-                await update.message.reply_text(f"No questions found with ID {requested_id}.")
-                return
-                
-            # Tell the user how many questions we found
-            await update.message.reply_text(
-                f"📊 Starting a quiz with {len(matching_questions)} questions (ID: {requested_id}).\n"
-                "Questions will be sent every 15 seconds."
-            )
-            # Initialize question numbering
-            context.user_data["current_question_number"] = 1
-            context.user_data["total_questions"] = len(matching_questions)
-            
-            # Send the first question
-            if matching_questions:
-                question = matching_questions[0]
-                # Get the timer duration, default to 15 seconds
-                timer_duration = question.get("timer_duration", 15)
-                
-                # Add question number to the question text in square brackets
-                question_text = f"[1/{len(matching_questions)}] {question['question']}"
-                
-                await context.bot.send_poll(
-                    chat_id=update.effective_chat.id,
-                    question=question_text,  # Use the modified question text with number
-                    options=question["options"],
-                    type=Poll.QUIZ,
-                    correct_option_id=question["answer"],
-                    is_anonymous=False,
-                    explanation="Marathon mode",
-                    open_period=timer_duration  # Add timer animation
-                )
-
-                # Store the remaining questions in user_data for the timer
-            if len(matching_questions) > 1:
-                context.user_data["marathon_questions"] = matching_questions[1:]
-                context.user_data["marathon_question_index"] = 0
-                context.user_data["marathon_chat_id"] = update.effective_chat.id
-                # Set current question number to 2 for the next question
-                context.user_data["current_question_number"] = 2  # Start with 2 for the next question
-                
-                # Schedule the first question after 15 seconds
-                await schedule_next_question(context)
-            
-            return
-            
-        except ValueError:
-            await update.message.reply_text("Invalid ID format. Please use a number.")
-            return
-
-    # If no ID specified or invalid ID, select a random question
-    question = random.choice(questions)
+    # Randomly select questions for the quiz (up to max_questions)
+    settings = load_settings()
+    max_questions = min(settings.get("max_questions", 10), len(questions))
+    selected_questions = random.sample(questions, max_questions)
     
-    # Get the timer duration, default to 15 seconds
-    timer_duration = question.get("timer_duration", 15)
+    # Set up quiz state
+    current_quiz_state.clear()
+    player_data.clear()
     
-    # Send the quiz poll
-    await context.bot.send_poll(
-        chat_id=update.effective_chat.id,
-        question=question["question"],
-        options=question["options"],
-        type=Poll.QUIZ,
-        correct_option_id=question["answer"],
-        is_anonymous=False,
-        open_period=timer_duration  # Add timer animation
+    current_quiz_state["title"] = "General Knowledge Quiz"
+    current_quiz_state["questions"] = selected_questions
+    current_quiz_state["current_question"] = 0
+    current_quiz_state["start_time"] = time.time()
+    
+    # Send first question
+    await schedule_next_question(context)
+    
+    await update.message.reply_text(
+        f"Starting quiz with {len(selected_questions)} questions!\n"
+        f"Each correct answer: +{settings.get('correct_points', 5)} points\n"
+        f"Each wrong answer: -{int(settings.get('correct_points', 5) * settings.get('negative_ratio', 0.4))} points"
     )
-
-    # Update stats for this user
-    user_id = update.effective_user.id
-    stats = load_stats()
-    
-    if str(user_id) not in stats:
-        stats[str(user_id)] = {"played": 0, "correct": 0}
-    
-    stats[str(user_id)]["played"] += 1
-    save_stats(stats)
 
 async def schedule_next_question(context: ContextTypes.DEFAULT_TYPE):
     """Send the next question in the marathon quiz sequence"""
