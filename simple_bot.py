@@ -2318,18 +2318,22 @@ async def handle_poll_id_selection(update: Update, context: ContextTypes.DEFAULT
 async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
     """Show final quiz results with a leaderboard sorted by score and time"""
     # Get the chat ID from where we stored it
-    chat_id = context.user_data.get("marathon_chat_id")
+    chat_id = context.bot_data.get("quiz_chat_id")  # Make sure this matches where you store it
     
     # If for some reason it's not there, we can't proceed
     if not chat_id:
+        print("No chat_id found!")
         return
     
-    # Get player data from bot_data instead of user_data
+    # Get player data from bot_data
     player_data = context.bot_data.get("player_scores", {})
+    
+    # Debug - remove later
+    print(f"Player data: {player_data}")
     
     # Create the leaderboard message
     text = "🏁 *The quiz has finished!*\n\n"
-    total_questions = context.user_data.get("total_questions", 0)
+    total_questions = context.bot_data.get("total_questions", 0)
     text += f"{total_questions} questions answered\n\n"
     
     # If no players participated or scores weren't tracked
@@ -2369,6 +2373,8 @@ async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
     # Clear quiz data
     if "player_scores" in context.bot_data:
         del context.bot_data["player_scores"]
+    if "active_polls" in context.bot_data:
+        del context.bot_data["active_polls"]
 
 async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for when a user answers a poll"""
