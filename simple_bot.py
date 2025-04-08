@@ -2321,40 +2321,55 @@ async def show_final_results(context: ContextTypes.DEFAULT_TYPE):
     if not chat_id:
         return
     
-    # Get player data from wherever you're storing it
-    player_data = context.user_data.get("player_scores", {})
-    
-    # Sort players by score (descending) and time taken (ascending)
-    leaderboard = sorted(player_data.values(), key=lambda x: (-x["score"], x["time_taken"]))
+    # Get player data from bot_data instead of user_data
+    player_data = context.bot_data.get("player_scores", {})
     
     # Create the leaderboard message
-    text = f"🏁 *The quiz has finished!*\n\n"
+    text = "🏁 *The quiz has finished!*\n\n"
     total_questions = context.user_data.get("total_questions", 0)
     text += f"{total_questions} questions answered\n\n"
     
-    # Add each player to the leaderboard with appropriate medal
+    # If no players participated or scores weren't tracked
+    if not player_data:
+        text += "No participants answered the quiz questions."
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        return
+    
+    # Convert player_scores dictionary to a list for sorting
+    leaderboard = []
+    for user_id, data in player_data.items():
+        leaderboard.append(data)
+    
+    # Sort by score (highest first) and time (fastest first)
+    leaderboard = sorted(leaderboard, key=lambda x: (-x["score"], x["time_taken"]))
+    
+    # Add each player to the text
     for i, player in enumerate(leaderboard, 1):
-        name = player['name']
-        score = player['score']
-        
-        # Format time nicely
-        time_sec = round(player['time_taken'], 1)
-        minutes = int(time_sec // 60)
-        seconds = time_sec % 60
-        time_str = f"{minutes} min {int(seconds)} sec" if minutes > 0 else f"{time_sec} sec"
-        
-        # Assign medals for top 3 positions
+        # Add medal emoji for top 3
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         
-        # Add this player's entry to the leaderboard
-        text += f"{medal} {name} – {score} points ({time_str})\n"
+        # Format time
+        time_sec = round(player["time_taken"], 1)
+        minutes = int(time_sec // 60)
+        seconds = int(time_sec % 60)
+        time_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+        
+        # Create player entry
+        text += f"{medal} *{player['name']}* – {player['score']} points ({time_str})\n"
     
-    # Add congratulations message at the end
+    # Add congratulations
     text += "\n🏆 Congratulations to the winner!"
     
     # Send the message
     await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+    
+    # Clear quiz data
+    if "player_scores" in context.bot_data:
+        del context.bot_data["player_scores"]
 
+
+        
+        
 
 
 
