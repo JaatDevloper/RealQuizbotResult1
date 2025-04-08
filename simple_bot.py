@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from telegram import Update, Poll, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, PollHandler, CallbackQueryHandler,
-    ConversationHandler, MessageHandler, filters
+    ConversationHandler, MessageHandler, filters, PollAnswerHandler
 )
 
 # Configure logging
